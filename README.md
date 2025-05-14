@@ -133,7 +133,7 @@ Index=Your_Windows_Index EventCode=4768 “Failure Code: 0x18”
 
 #### Linux
 
-### Failed SSH Logins with Non-Existent Usernames
+##### Failed SSH Logins with Non-Existent Usernames
 
 Index=Your_Linux_Index (sourcetype=linux_secure OR sourcetype=syslog) “Failed password for invalid user”
 | rex “Failed password for invalid user (?<user>\S+) from (?<src_ip>\S+)”
