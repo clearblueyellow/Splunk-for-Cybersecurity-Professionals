@@ -98,6 +98,58 @@ Index=Your_Linux_Index (sourcetype=linux_secure OR sourcetype=syslog) “Accepte
 
 ### Unauthorized Access Attempts
 
+#### Windows
+
+##### High Number of Failed Logins
+
+Index=Your_Windows_Index EventCode=4625 action=failure
+| stats count by user, src_ip, dest_host
+| where count > 10 // Adjust threshold
+| sort -count
+| table user, src_ip, dest_host, count
+
+##### Failed Logins with Non-Existent Usernames
+
+Index=Your_Windows_Index EventCode=4625 action=failure (Status=”0xc0000064” OR “Unknown user name or bad password”) // Status codes can vary; check your logs. “0xc0000064” usually means username does not exist.
+| stats count by user, src_ip, dest_host
+| sort -count
+| table user, src_ip, dest_host, count
+
+##### Access Attempts to Disabled Accounts
+
+Index=Your_Windows_Index EventCode=4625 action=failure (Status=”0xc0000072” OR “Account disabled”) // Status codes can vary. “0xc0000072” often means account disabled.
+| stats count by user, src_ip, dest_host
+| sort -count
+| table user, src_ip, dest_host, count
+
+##### Kerberos Pre-Authentication Failures (AS-REP Roasting Potential)
+
+Index=Your_Windows_Index EventCode=4768 “Failure Code: 0x18”
+| stats count by “Account Name”, “Client Address”
+| where count > 20 // Adjust threshold
+| rename “Account Name” as user, “Client Address” as src_ip
+| sort -count
+| table user, src_ip, count
+
+#### Linux
+
+### Failed SSH Logins with Non-Existent Usernames
+
+Index=Your_Linux_Index (sourcetype=linux_secure OR sourcetype=syslog) “Failed password for invalid user”
+| rex “Failed password for invalid user (?<user>\S+) from (?<src_ip>\S+)”
+| stats count by user, src_ip, host
+| sort -count
+| table user, src_ip, host, count
+
+##### Attempts to Use su or sudo by Unauthorized Users
+
+Index=Your_Linux_Index (sourcetype=linux_secure OR sourcetype=syslog) (“authentication failure” AND (sudo OR su)) OR (sudo AND “is not in the sudoers file”)
+| rex “(?<user>\S+)\s+:.*authentication failure”
+| rex “(?<user>\S+)\s+:.*is not in the sudoers file”
+| stats count by user, host, _raw
+| sort -count
+| table user, host, count, _raw
+
 ### Privilege Escalation
 
 ## Endpoint Protection and Vulnerability Management Dashboard
