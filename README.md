@@ -14,7 +14,9 @@
 
 ### Suspicious Login Activity
 
-##### Windows
+#### Windows
+
+##### Multiple Logins Followed by Success
 
 Index=Your_Windows_Index EventCode=4625 OR EventCode=4624 action=failure OR action=success
 | stats count(eval(EventCode=4625)) as failed_logins, count(eval(EventCode=4624)) as successful_logins, earliest(_time) as first_attempt, latest(_time) as last_attempt by user, src_ip
@@ -22,9 +24,7 @@ Index=Your_Windows_Index EventCode=4625 OR EventCode=4624 action=failure OR acti
 | sort -failed_logins
 | table user, src_ip, failed_logins, successful_logins, first_attempt, last_attempt
 
-### Logins from Unusual Geographic Locations
-
-#### Windows
+##### Logins from Unusual Geographic Locations
 
 Index=Your_Windows_Index EventCode=4624 action=success
 | iplocation src_ip
@@ -33,9 +33,7 @@ Index=Your_Windows_Index EventCode=4624 action=success
 | sort -count
 | table user, src_ip, City, Country, count
 
-### Login Outside of Business Hours
-
-#### Windows
+##### Login Outside of Business Hours
 
 Index=Your_Windows_Index EventCode=4624 action=success
 | eval hour = strftime(_time, “%H”)
@@ -46,13 +44,55 @@ Index=Your_Windows_Index EventCode=4624 action=success
 | sort -_time
 | table user, src_ip, _time, host, count
 
-### Concurrent Logins from Different IPs for the Same User
-
-#### Windows
+##### Concurrent Logins from Different IPs for the Same User
 
 Index=Your_Windows_Index EventCode=4624 action=success
 | stats dc(src_ip) as distinct_ips, values(src_ip) as source_ips, earliest(_time) as first_login, latest(_time) as last_login by user
 | where distinct_ips > 1 AND (last_login – first_login) < 3600 // Adjust time window (3600 seconds = 1 hour) as needed
+| sort -distinct_ips
+| table user, distinct_ips, source_ips, first_login, last_login
+
+#### Linux
+
+##### Multiple Failed SSH Logins Followed by Success
+
+Index=Your_Linux_Index (sourcetype=linux_secure OR sourcetype=syslog) (Accepted OR Failed) password for *
+| rex “Accepted password for (?<user>\S+) from (?<src_ip>\S+)”
+| rex “Failed password for (invalid user )?(?<user>\S+) from (?<src_ip>\S+)”
+| eval status=if(match(_raw, “Accepted”), “success”, “failure”)
+| stats count(eval(status=”failure”)) as failed_logins, count(eval(status=”success”)) as successful_logins, earliest(_time) as first_attempt, latest(_time) as last_attempt by user, src_ip
+| where failed_logins > 5 AND successful_logins > 0 AND (last_attempt – first_attempt) < 1800 // Adjust threshold and time window
+| sort -failed_logins
+| table user, src_ip, failed_logins, successful_logins, first_attempt, last_attempt
+
+##### SSH Logins from Unusual Geographic Locations
+
+Index=Your_Linux_Index (sourcetype=linux_secure OR sourcetype=syslog) “Accepted password for”
+| rex “Accepted password for (?<user>\S+) from (?<src_ip>\S+)”
+| iplocation src_ip
+| search NOT (Country=”Your_Expected_Country_1” OR Country=”Your_Expected_Country_2”) // Add your expected countries
+| stats count by user, src_ip, City, Country, host
+| sort -count
+| table user, src_ip, City, Country, host, count
+
+##### SSH Logins Outside of Business Hours
+
+Index=Your_Linux_Index (sourcetype=linux_secure OR sourcetype=syslog) “Accepted password for”
+| rex “Accepted password for (?<user>\S+) from (?<src_ip>\S+)”
+| eval hour = strftime(_time, “%H”)
+| where hour < 8 OR hour > 18 // Adjust hours
+| eval day_of_week = strftime(_time, “%w”)
+| where day_of_week != 0 AND day_of_week != 6 // Exclude weekends
+| stats count by user, src_ip, _time, host
+| sort -_time
+| table user, src_ip, _time, host, count
+
+##### Concurrent SSH Logins from Different IPs for the Same User
+
+Index=Your_Linux_Index (sourcetype=linux_secure OR sourcetype=syslog) “Accepted password for”
+| rex “Accepted password for (?<user>\S+) from (?<src_ip>\S+)”
+| stats dc(src_ip) as distinct_ips, values(src_ip) as source_ips, earliest(_time) as first_login, latest(_time) as last_login by user
+| where distinct_ips > 1 AND (last_login – first_login) < 3600 // Adjust time window
 | sort -distinct_ips
 | table user, distinct_ips, source_ips, first_login, last_login
 
