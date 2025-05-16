@@ -1,4 +1,4 @@
-# Standard Splunk SOC Dashboards
+# Splunk for Cybersecurity Professionals
 
 ## Systems Security Posture Dashboard
 
