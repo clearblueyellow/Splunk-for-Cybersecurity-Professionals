@@ -236,9 +236,93 @@ Index=Your_Linux_Index (sourcetype=linux_secure OR sourcetype=syslog) “new use
 
 ## Endpoint Protection and Vulnerability Management Dashboard
 
-### Endpoint Security Controls
+### Endpoint Security Controls Status
+
+#### Windows
+
+##### Antivirus/Anti-malware Service Status
+
+Index=Your_Windows_Index sourcetype=”WinEventLog:System” EventCode=7036  
+| eval ServiceName=param1, ServiceState=param2  
+| search ServiceName=”WinDefend” OR ServiceName=”MsMpEng” // MsMpEng is Microsoft Antimalware Service  
+| dedup host sortby -_time  
+| where ServiceState=”stopped”  
+| table _time, host, ServiceName, ServiceState
+
+##### Firewall Status (Windows Firewall)
+
+Index=Your_Windows_Index sourcetype=”WinEventLog:Microsoft-Windows-Windows Firewall With Advanced Security/Firewall” EventCode=2003 (*profile*is*off*) 
+| rex field=_raw “Profile (?<profile>\w+) is now off.”  
+| dedup host, profile sortby -_time  
+| table _time, host, profile, Message
+
+##### Disk Encryption Status (BitLocker)
+
+Index=Your_Windows_Index sourcetype=”WinEventLog:Microsoft-Windows-BitLocker-DrivePreparationTool/Admin” OR sourcetype=”your_epp_inventory_sourcetype” EventCode=853 OR (source=”epp_inventory” encryption_status=”off”)  
+// EventID 853: BitLocker Drive Encryption recovery information for volume C: was successfully backed up to Active Directory Domain Services. (Indicates it was enabled)  
+// Look for absence of recent ‘enabled’ events or explicit ‘disabled/suspended’ status from EPP.  
+// This is a harder one without dedicated EPP inventory data.  
+// A simpler start could be looking for errors in BitLocker logs.  
+| search EventCode=XYZ_BitLocker_Error_Code OR (sourcetype=”epp_data” bitlocker_status=”Error” OR bitlocker_status=”Disabled”)  
+| stats count by host, bitlocker_status, Message  
+| table host, bitlocker_status, Message
+
+##### EDR Agent Health/Status
+
+Index=Your_EDR_Index sourcetype=”your_edr_agent_health_sourcetype”  
+| dedup host sortby -_time  
+| where agent_status=”Error” OR agent_status=”Not Reporting” OR last_seen < relative_time(now(), “-1h”) // Agent hasn’t checked in for an hour  
+| table _time, host, agent_status, last_seen, agent_version  
+
+#### Linux
+
+##### Antivirus Service Status
+
+Index=Your_Linux_Index sourcetype=linux_ps (COMMAND=”clamd” OR COMMAND=”clamav-daemon”)  
+| stats dc(host) as reporting_hosts by COMMAND  
+// More effectively, look for absence or “stopped” messages in syslog for the service  
+// index=Your_Linux_Index sourcetype=syslog (host=* systemd OR host=* service) (“clamav-daemon.service: Succeeded” OR “Stopped Clam AntiVirus Daemon”)  
+// | dedup host sortby -_time  
+// | where _raw matches “Stopped” OR _raw matches “Failed”  
+// | table _time, host, process_name, message  
+// This is better done with a heartbeat/health check from the EPP/AV solution itself if available.  
+// For a basic check if it’s *ever* reported as stopped recently:
+Index=Your_Linux_Index (sourcetype=syslog OR sourcetype=linux_messages) (“clamd” OR “clamav-daemon”) (stopped OR failed OR “activating process exited”)  
+| stats earliest(_time) as first_occurrence, latest(_time) as last_occurrence, values(MESSAGE) as messages by host, process_name  
+| table host, process_name, last_occurrence, messages
+
+##### Firewall Status
+
+Index=Your_Linux_Index sourcetype=syslog (host=* systemd OR host=* service) “firewalld.service”  
+| dedup host sortby -_time  
+| where _raw matches “inactive \(dead\)” OR _raw matches “failed” OR _raw matches “Stopped”  
+| table _time, host, process_name, Message
+
+##### EDR Agent Health/Status
+
+Index=Your_EDR_Index sourcetype=”your_linux_edr_agent_health_sourcetype” os_type=”Linux”  
+| dedup host sortby -_time  
+| where agent_status=”Error” OR agent_status=”Not Reporting” OR last_seen < relative_time(now(), “-1h”)  
+| table _time, host, agent_status, last_seen, agent_version
+
+##### SELinux/AppArmor Status
+
+Index=Your_Auditd_Index sourcetype=linux_audit type=AVC msg=* // AVC denials indicate SELinux is active. Absence of these on a system supposed to have them could be an issue, or it's permissive.  
+// More direct way is if you log ‘getenforce’ or ‘sestatus’ output periodically:  
+// index=Your_Linux_Index sourcetype=linux_commands command=”getenforce”  
+// | dedup host sortby -_time  
+// | where output!=”Enforcing”  
+// | table _time, host, output  
+// For AppArmor (from syslog/kern.log):  
+Index=Your_Linux_Index sourcetype=syslog (kernel AND (AppArmor AND (status OR profile)))  
+| rex “apparmor=\”(?<apparmor_status>\w+)\”.*profile=\”(?<apparmor_profile>[^\”]+)\””  
+| search apparmor_status=”DENIED” // or look for startup messages indicating mode  
+| stats count by host, apparmor_profile, apparmor_status  
+| table host, apparmor_profile, apparmor_status, count
 
 ### Active Threats
+
+
 
 ### Missing Patches
 
