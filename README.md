@@ -433,7 +433,58 @@ Index=Your_Auditd_Index sourcetype=linux_audit type=SYSCALL (path=”/etc/shadow
 
 #### Windows and Linux
 
-### Vulnerability Scanner
+##### Top Detected Malware by Name
+
+Index=Your_EPP_Index OR index=Your_Windows_Index sourcetype=”WinEventLog:Microsoft-Windows-Windows Defender/Operational” EventCode=1006 OR index=Your_Linux_AV_Index // Defender Event 1006: Malware detected  
+| stats count by malware_name // Field name might be threat_name, signature, VirusName etc.  
+| sort -count  
+| head 10  
+| table malware_name, count
+
+##### Hosts with Most Malware Detections
+
+Index=Your_EPP_Index OR index=Your_Windows_Index sourcetype=”WinEventLog:Microsoft-Windows-Windows Defender/Operational” EventCode=1006 OR index=Your_Linux_AV_Index  
+| stats count as detection_count, dc(malware_name) as distinct_malware by host  
+| sort -detection_count  
+| head 10  
+| table host, detection_count, distinct_malware
+
+##### Malware Detection Actions
+
+Index=Your_EPP_Index OR index=Your_Windows_Index sourcetype=”WinEventLog:Microsoft-Windows-Windows Defender/Operational” (EventCode=1007 OR EventCode=1008 OR EventCode=1009 OR EventCode=1015 OR EventCode=1117 OR EventCode=1118 OR EventCode=1119) // Defender events for actions  
+// Or for general EPP:  
+// | search (action_taken=* OR malware_status=*)  
+| stats count by action_taken // Field may be ‘status’, ‘action’, ‘remediation_status’  
+| sort -count  
+| table action_taken, count
+
+### Vulnerability Scanner Insights
+
+#### Windows and Linux
+
+Index=Your_Vuln_Index (severity=”Critical” OR severity=”High” OR cvss_base_score>=7.0) (state=”Vulnerable” OR state=”Active” OR state=”New” OR patch_status=”missing”)  
+| stats dc(host) as affected_hosts_count by vulnerability_title, cve, cvss_base_score, solution  
+| sort -affected_hosts_count  
+| head 10  
+| table vulnerability_title, cve, cvss_base_score, affected_hosts_count, solution
+
+##### Hosts with Most Critical/High Vulnerabilities
+
+Index=Your_Vuln_Index (severity=”Critical” OR severity=”High” OR cvss_base_score>=7.0) (state=”Vulnerable” OR state=”Active” OR state=”New” OR patch_status=”missing”)  
+| stats count as vulnerability_count, values(vulnerability_title) as vulnerabilities by host  
+| sort -vulnerability_count  
+| head 10  
+| table host, vulnerability_count, vulnerabilities
+
+##### Aging of Open Critical/High Vulnerabilities
+
+Index=Your_Vuln_Index (severity=”Critical” OR severity=”High” OR cvss_base_score>=7.0) (state=”Vulnerable” OR state=”Active” OR state=”New” OR patch_status=”missing”)  
+| eval first_discovered_epoch = strptime(first_discovered_date, “%Y-%m-%d %H:%M:%S”) // Adjust date format if needed  
+| eval age_days = round((now() – first_discovered_epoch) / 86400, 0)  
+| where age_days > 30 // Show vulns older than 30 days  
+| stats avg(age_days) as avg_age_days, max(age_days) as max_age_days, values(host) as affected_hosts by vulnerability_title, cve  
+| sort -max_age_days  
+| table vulnerability_title, cve, avg_age_days, max_age_days, affected_hosts
 
 ### Policy Infraction
 
