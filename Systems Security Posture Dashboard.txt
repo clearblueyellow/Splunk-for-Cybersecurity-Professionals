@@ -1,0 +1,5 @@
+Systems Security Posture Dashboard
+Critical Alerts
+High/Critical Unpatched Vulnerabilities
+Active Endpoint Detections
+Alert/Detection Statistics
