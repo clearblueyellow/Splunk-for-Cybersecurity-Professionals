@@ -322,9 +322,64 @@ Index=Your_Linux_Index sourcetype=syslog (kernel AND (AppArmor AND (status OR pr
 
 ### Active Threats
 
+#### Windows and Linux
 
+##### High Severity EPP/EDR Alerts
+
+Index=Your_EDR_Index OR index=Your_EPP_Index (severity=”high” OR severity=”critical” OR priority=”high” OR priority=”critical”)  
+| stats count by _time, host, rule_name, signature, threat_name, user, process_name, action_taken  
+| sort -_time  
+| table _time, host, rule_name, signature, threat_name, user, process_name, action_taken, count
+
+##### Confirmed Malicious File/Process Detections (Behavioral)
+
+Index=Your_EDR_Index detection_type=”behavioral” (disposition=”malicious” OR threat_status=”active” OR confirmed_threat=”true”)  
+| stats earliest(_time) as first_seen, latest(_time) as last_seen, values(process_path) as suspicious_processes, values(command_line) as cmd_lines by host, threat_name, detection_id  
+| sort -last_seen  
+| table host, threat_name, first_seen, last_seen, suspicious_processes, cmd_lines
+
+##### Potential Ransomware Activity Indicators
+
+Index=Your_Sysmon_Index EventCode=1 (process_name=”vssadmin.exe” AND command_line=”*delete shadows*”) OR (process_name=”wbadmin.exe” AND command_line=”*delete catalog*”)  
+| stats count by _time, host, user, process_name, command_line  
+| sort -_time  
+| table _time, host, user, process_name, command_line, count  
+// Add EDR specific ransomware detection names:  
+// OR (index=Your_EDR_Index (threat_name=”*Ransomware*” OR rule_name=”*Ransomware*” OR category=”Ransomware”))
 
 ### Missing Patches
+
+#### Windows
+
+##### Hosts with Missing Critical/High Security Patches (from Vulnerability Scanner or WSUS logs)
+
+Index=Your_Vuln_Index (severity=”Critical” OR severity=”High”) (patch_status=”missing” OR state=”Vulnerable”) os=”Windows”  
+| stats dc(vulnerability_title) as missing_critical_high_patches_count, values(vulnerability_title) as vulnerabilities by host  
+| sort -missing_critical_high_patches_count  
+| table host, missing_critical_high_patches_count, vulnerabilities
+
+##### Specific Important KB Missing
+
+// Using vulnerability scanner data is more reliable  
+Index=Your_Vuln_Index os=”Windows” (vulnerability_id=”MSXX-XXX” OR kb_id=”KBXXXXXXX” OR cve=”CVE-XXXX-XXXXX”) (patch_status=”missing” OR state=”Vulnerable”)  
+| stats values(patch_solution) as solution by host, vulnerability_title  
+| table host, vulnerability_title, solution  
+// If you have a list of installed patches per host:  
+// index=patch_inventory sourcetype=windows_installed_patches host=*  
+// | stats values(KBID) as installed_kbs by host  
+// | search NOT installed_kbs=”KB5001234” // The KB you are looking for  
+// | table host
+
+#### Linux
+
+##### Hosts with Outdated Security Packages (from Vulnerability Scanner)
+
+Index=Your_Vuln_Index (severity=”Critical” OR severity=”High”) (patch_status=”missing” OR state=”Vulnerable”) (os=”Linux” OR os_distro=”Ubuntu” OR os_distro=”CentOS” OR os_distro=”RedHat”)  
+| stats dc(vulnerability_title) as missing_security_updates_count, values(package_name) as packages by host  
+| sort -missing_security_updates_count  
+| table host, missing_security_updates_count, packages
+
+
 
 ### Endpoint Detection and Response
 
