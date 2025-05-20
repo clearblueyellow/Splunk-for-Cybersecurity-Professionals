@@ -44,10 +44,10 @@ Important Considerations Before Implementation:
 
 ### System Integrity and Anomaly Detection Dashboard
 
+#### Domains: OS, File Integrity Monitoring, Basic Performance Metrics (Anomalies)
+
 * Goal: Detect deviations from baseline system behavior, unauthorized changes, critical system errors, and other potentially malicious activities that might bypass standard signatures.
 
 * Target Audience: SOC Analysts (Tier 2/3), Incident Responders, System Forensics.
 
 * Key Data Sources: OS Logs (Critical errors, service changes, process creation – e.g., Sysmon, Windows Event Logs, auditd), File Integrity Monitoring (FIM) logs, Host-based Intrusion Detection System (HIDS) alerts, basic performance metrics (CPU/Memory spikes – can indicate crypto-mining or DoS activity).
-
-#### Domains: OS, File Integrity Monitoring, Basic Performance Metrics (Anomalies)
