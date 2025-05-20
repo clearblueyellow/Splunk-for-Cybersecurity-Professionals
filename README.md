@@ -379,11 +379,59 @@ Index=Your_Vuln_Index (severity=”Critical” OR severity=”High”) (patch_st
 | sort -missing_security_updates_count  
 | table host, missing_security_updates_count, packages
 
+### Endpoint Detection and Response (EDR) Specific Alerts
 
+#### Windows and Linux
 
-### Endpoint Detection and Response
+##### Suspicious Process Execution (e.g., LOLBAS, PowerShell encoding)
+
+Index=Your_Sysmon_Index EventCode=1 (process_name=”powershell.exe” AND (command_line=”* -enc *” OR command_line=”* -EncodedCommand *” OR command_line=”* -nop -exec bypass *”)) OR (process_name IN (“certutil.exe”, “regsvr32.exe”, “mshta.exe”, “rundll32.exe”) AND command_line=”*-urlcache*” OR command_line=”*/s*http*”)  
+| stats count by _time, host, user, process_name, command_line, parent_process_name  
+| sort -_time  
+| table _time, host, user, process_name, command_line, parent_process_name, count
+
+##### Detected Lateral Movement (e.g., PsExec, WMI remote execution, SSH from unusual source)
+
+Index=Your_Sysmon_Index EventCode=1 process_name=”PSEXESVC.exe”  
+| stats count by _time, host, user, parent_process_name  
+| sort -_time  
+| table _time, host, user, parent_process_name, count  
+// For WMI remote process creation (EventCode=1, ParentImage ending in WmiPrvSE.exe, and process not usually child of WmiPrvSE)  
+
+Index=Your_Sysmon_Index EventCode=1 ParentImage=”C:\\Windows\\System32\\wbem\\WmiPrvSE.exe” NOT process_name IN (“trusted_child1.exe”, “trusted_child2.exe”)
+| stats count by _time, host, user, process_name, command_line, ParentImage
+| sort -_time
+| table _time, host, user, process_name, command_line, ParentImage, count
+
+##### SSH from internal host to another internal host NOT typical jump server
+
+Index=Your_Linux_Index (sourcetype=linux_secure OR sourcetype=syslog) “Accepted publickey for” OR “Accepted password for”  
+| rex “Accepted \S+ for (?<user>\S+) from (?<src_ip>\S+) port \d+ ssh2”  
+| where isnotnull(src_ip) AND src_ip!=”EXTERNAL_GATEWAY_IP” AND src_ip!=”KNOWN_ADMIN_WORKSTATION_IP_RANGE”  
+| stats count by src_ip, user, dest_host // dest_host is the logging server  
+| where count > 5 // Tune threshold  
+| sort -count  
+| table src_ip, user, dest_host, count
+
+##### Credential Dumping Attempts (e.g., LSASS access, mimikatz patterns)
+
+Index=Your_Sysmon_Index EventCode=10 TargetImage=”C:\\Windows\\System32\\lsass.exe” CallTrace=”*dbgcore.dll*” OR CallTrace=”*dbghelp.dll*” NOT (SourceImage=”C:\\Windows\\System32\\svchost.exe” OR SourceImage=”C:\\Windows\\System32\\taskmgr.exe”) // Filter known good ones  
+| stats count by _time, host, SourceImage, TargetImage, GrantedAccess  
+| sort -_time  
+| table _time, host, SourceImage, TargetImage, GrantedAccess, count  
+// Or from EDR:  
+// index=Your_EDR_Index (rule_name=”*Mimikatz*” OR rule_name=”*LSASS*” OR threat_name=”*CredentialTheft*”)
+
+##### Suspicious file access to shadow/passwd, or auditd logs for specific syscalls if EDR doesn’t cover
+
+Index=Your_Auditd_Index sourcetype=linux_audit type=SYSCALL (path=”/etc/shadow” OR path=”/etc/passwd”) (syscall=openat OR syscall=open) perm=r key=”sensitive_file_access” NOT (exe=”/usr/bin/passwd” OR exe=”/usr/sbin/unix_chkpwd”)  
+| stats count by _time, host, auid, exe, path  
+| sort -_time  
+| table _time, host, auid, exe, path, count
 
 ### Virus and Malware
+
+#### Windows and Linux
 
 ### Vulnerability Scanner
 
