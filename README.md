@@ -488,6 +488,56 @@ Index=Your_Vuln_Index (severity=”Critical” OR severity=”High” OR cvss_ba
 
 ### Policy Infraction
 
+#### Windows
+
+// Using Microsoft-Windows-Kernel-PnP/Configuration (more general PnP, might need filtering for USB storage)  
+Index=Your_Windows_Index sourcetype=”WinEventLog:Microsoft-Windows-Kernel-PnP/Configuration” (EventCode=1006 OR EventCode=1011 OR EventCode=1012) Message=”*USBSTOR*”  
+| rex field=Message “Device (?<device_id>[^ ]+) was configured.”  
+| rex field=Message “Device (?<device_id>[^ ]+) was started.”  
+| rex field=Message “Device (?<device_id>[^ ]+) was deleted.”  
+| stats values(Message) as event_messages by _time, host, device_id  
+| sort -_time  
+| table _time, host, device_id, event_messages  
+// Sysmon EventCode 11 (FileCreate) can also catch file writes to USB drives if path is known.  
+// For more specific USB logging (Device IDs, Vendor, Product):  
+// index=Your_Windows_Index sourcetype=”WinEventLog:Microsoft-Windows-DriverFrameworks-UserMode/Operational” EventID=2003 OR EventID=2004 OR EventID=2010 OR EventID=2100 OR EventID=2102 OR EventID=2105  
+// | search Message=”*USBSTOR*” // Filter for USB Storage devices  
+// | parse Message “Device ‘SWD\\WPDBUSENUM\\_??_USBSTOR#*” as * usb_details // Example parsing, will vary  
+// | table _time, host, user, usb_details, Message  
+
+##### Unauthorized Software Installations (Requires Software Installation Auditing or Sysmon)
+
+Index=Your_Sysmon_Index EventCode=1 (process_name IN (“msiexec.exe”, “setup.exe”, “install.exe”) OR command_line IN (“*.msi”, “*.exe /install”))  
+| lookup approved_software_lookup process_name AS process_name OUTPUT approved  
+| where isnull(approved) OR approved=”false”  
+| stats count by _time, host, user, process_name, command_line  
+| sort -_time  
+| table _time, host, user, process_name, command_line, count  
+// Windows Event Log (System log, EventID 11707 for successful MSI install, 1033 for MsiInstaller Product Name)  
+// index=Your_Windows_Index sourcetype=”WinEventLog:Application”  SourceName=”MsiInstaller” (EventCode=1033 OR EventCode=11707)  
+// | eval ProductName=if(EventCode=1033, EventData.ProductUrl, EventData.P1) // Field name might vary  
+// | lookup approved_software_lookup ProductName OUTPUT approved  
+// | where isnull(approved) OR approved=”false”  
+// | stats values(EventCode) as event_codes by _time, host, user, ProductName  
+// | table _time, host, user, ProductName, event_codes
+
+##### Printing Activity (Requires Print Service Auditing)
+
+Index=Your_Windows_Index sourcetype=”WinEventLog:Microsoft-Windows-PrintService/Operational” EventCode=307  
+| rex field=Message “Document (?<document_id>\d+), (?<document_name>[^,]+ owned by (?<owner>[^ ]+) on machine (?<client_machine>[^ ]+) was printed on (?<printer_name>[^ ]+) via port (?<port_name>[^ ]+). Size in bytes: (?<size_bytes>\d+). Pages printed: (?<pages_printed>\d+).”  
+| table _time, host, owner, client_machine, document_name, printer_name, size_bytes, pages_printed
+
+##### Screenshot Tool Usage (Sysmon is best)
+
+Index=Your_Sysmon_Index EventCode=1 (process_name=”SnippingTool.exe” OR process_name=”ScreenClippingHost.exe” OR process_name=”ms-screenclip:” OR Image=”C:\\Windows\\System32\\SnippingTool.exe” OR Image=”C:\\Windows\\SystemApps\\Microsoft.Windows.SecHealthUI_cw5n1h2txyewy\\ScreenClipping\\ScreenClippingHost.exe”)  
+| stats count by _time, host, user, process_name, command_line  
+| sort -_time  
+| table _time, host, user, process_name, command_line, count
+
+#### Linux
+
+
+
 ## System Integrity and Anomaly Detection Dashboard
 
 ### OS
