@@ -536,7 +536,27 @@ Index=Your_Sysmon_Index EventCode=1 (process_name=”SnippingTool.exe” OR proc
 
 #### Linux
 
+##### USB Device Connections (Requires auditd with usb-storage rules or usbguard)
 
+Index=Your_Linux_Index sourcetype=syslog process=”usbguard-daemon”  
+| rex “Rule (?<rule_id>\d+) (?<action>\w+) device id=’(?<device_id>[^’]+)’.*name=’(?<device_name>[^’]+)’.*serial=’(?<device_serial>[^’]+)’.*with-interface=’(?<device_interface>[^’]+)’”  
+| search device_interface=”080650” // Filter for Mass Storage interface class/subclass/protocol  
+| stats values(action) as actions by _time, host, device_name, device_serial, device_id  
+| sort -_time  
+| table _time, host, device_name, device_serial, device_id, actions
+
+Index=Your_Auditd_Index sourcetype=linux_audit key=”usb_events” type=SYSCALL  
+// This is very noisy; needs significant filtering based on specific devices or attributes
+// Often better to use usbguard or EDR capabilities for this.
+| stats count by _time, host, auid, exe, path  
+| table _time, host, auid, exe, path, count  
+
+##### Use of Unapproved Commands/Tools (Auditd)
+
+Index=Your_Auditd_Index sourcetype=linux_audit type=SYSCALL key=”monitored_command_execution” exe=”/usr/bin/nmap”  
+| stats values(a0) as args_preview, count by _time, host, auid, exe, cwd // cwd is current working directory  
+| sort -_time  
+| table _time, host, auid, exe, args_preview, cwd, count
 
 ## System Integrity and Anomaly Detection Dashboard
 
