@@ -196,7 +196,43 @@ Index=Your_Linux_Index (sourcetype=linux_secure OR sourcetype=syslog) sudo “CO
 | sort -count  
 | table original_user, target_user, host, commands, count
 
-#####
+##### Successful su to Root or Other Privileged User
+
+Index=Your_Linux_Index (sourcetype=linux_secure OR sourcetype=syslog) “su: pam_unix(su:session): session opened for user”  
+| rex “session opened for user (?<target_user>\S+) by (?<original_user>\S+)\(“  
+| where target_user=”root” OR target_user=”admin_user_example” // Add other privileged users  
+| stats count by original_user, target_user, host  
+| sort -count  
+| table original_user, target_user, host, count
+
+##### Changes to /etc/sudoers or Sudoers Drop-in Files
+
+Index=Your_Linux_Index (sourcetype=fim_logs OR sourcetype=ossec OR sourcetype=wazuh) (file_path=”/etc/sudoers” OR file_path=”/etc/sudoers.d/*”) (action=”modified” OR action=”created” OR action=”deleted”)  
+| stats values(action) as actions, count by file_path, user, host, _time  
+| sort -_time  
+| table _time, file_path, actions, user, host, count
+
+##### New User Creation with UID 0 (Root Equivalent)
+
+Index=Your_Linux_Index (sourcetype=linux_audit OR sourcetype=syslog) (executed_command=”useradd * -o -u 0” OR executed_command=”useradd * -u 0 -o”) OR (type=USER_MGMT msg=*new user*)  
+// If using auditd, look for syscalls related to /etc/passwd modification by useradd or similar tools and check UID.  
+// A simpler approach if you have command line logging:  
+// index=Your_Linux_Index (sourcetype=linux_secure OR sourcetype=syslog) sudo “COMMAND=/usr/sbin/useradd”  
+// | search COMMAND=”* -u 0 *” OR COMMAND=”* --uid 0 *”  
+| rex “COMMAND=(?<command_line>.*useradd.*)”  
+| search command_line=”*-u 0*” OR command_line=”*--uid 0*”  
+| stats count by user, host, command_line  
+| sort -count  
+| table user, host, command_line, count
+
+OR
+
+Index=Your_Linux_Index (sourcetype=linux_secure OR sourcetype=syslog) “new user:”  
+| rex “new user: name=(?<new_user>\S+), UID=(?<new_uid>\d+), GID=(?<new_gid>\d+), home=(?<new_home>\S+)”  
+| where new_uid == 0  
+| stats count by new_user, new_uid, new_gid, new_home, host, _raw // _raw can give context of who added  
+| sort -_time  
+| table _time, new_user, new_uid, host, _raw
 
 ## Endpoint Protection and Vulnerability Management Dashboard
 
