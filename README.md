@@ -152,6 +152,52 @@ Index=Your_Linux_Index (sourcetype=linux_secure OR sourcetype=syslog) (“authen
 
 ### Privilege Escalation
 
+#### Windows
+
+##### User Added to Privileged Group
+
+Index=Your_Windows_Index (EventCode=4728 OR EventCode=4732 OR EventCode=4756) (“Group Name”=”Domain Admins” OR “Group Name”=”Administrators” OR “Group Name”=”Enterprise Admins” OR “Group Name”=”Schema Admins”) // Add other privileged group SIDs or names  
+| stats values(“Member Name”) as member_added, values(“TargetUserName”) as group_name, values(“SubjectUserName”) as added_by, _time, host  
+| rename “Group Name” as GroupName // Ensure field name matches your extraction if different  
+| table _time, member_added, GroupName, added_by, host
+
+##### Special Privileges Assigned to New Logon
+
+Index=Your_Windows_Index EventCode=4672  
+| stats values(Privileges) as Privileges, count by SubjectUserName, SubjectDomainName, host  
+| search NOT (SubjectUserName=”SYSTEM” OR SubjectUserName=”LOCAL SERVICE” OR SubjectUserName=”NETWORK SERVICE”) // Filter out common system accounts if noisy  
+| sort -count  
+| table SubjectUserName, SubjectDomainName, host, Privileges, count
+
+##### Process Creation with Elevated Tokens
+
+Index=Your_Windows_Index EventCode=4648  
+| stats values(TargetUserName) as runas_user, values(ProcessName) as source_process, count by AccountName, LogonProcessName, IpAddress, host  
+| rename AccountName as initiated_by_user, IpAddress as src_ip  
+| sort -count  
+| table _time, initiated_by_user, runas_user, source_process, LogonProcessName, src_ip, host
+
+##### User Rights Assignment Changes
+
+Index=Your_Windows_Index (EventCode=4704 OR EventCode=4705)  
+| stats values(UserRight) as user_right, values(AccountName) as target_account, values(EventCode) as action_code by SubjectUserName, host  
+| eval action = if(action_code=4704, “Assigned”, “Removed”)  
+| table _time, SubjectUserName, target_account, user_right, action, host
+
+#### Linux
+
+##### Successful sudo to Root or Other Privileged User
+
+Index=Your_Linux_Index (sourcetype=linux_secure OR sourcetype=syslog) sudo “COMMAND=”  
+| rex “USER=(?<target_user>\S+)\s+.*COMMAND=(?<command>.+)”  
+| rex “(?<original_user>\S+)\s+: TTY”  
+| where target_user=”root” OR target_user=”admin_user_example” // Add other privileged users  
+| stats count, values(command) as commands by original_user, target_user, host  
+| sort -count  
+| table original_user, target_user, host, commands, count
+
+#####
+
 ## Endpoint Protection and Vulnerability Management Dashboard
 
 ### Endpoint Security Controls
