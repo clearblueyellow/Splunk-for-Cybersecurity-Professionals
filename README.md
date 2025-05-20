@@ -693,3 +693,16 @@ Index=Your_Perf_Index sourcetype=Perfmon:Memory OR sourcetype=linux_performance_
 | stats avg(Value) as avg_mem_percent by host  
 | where avg_mem_percent > 90 // Sustained above 90% for the last hour  
 | sort -avg_mem_percent
+
+##### Low Disk Space
+
+Index=Your_Perf_Index sourcetype=Perfmon:”LogicalDisk” OR sourcetype=df OR sourcetype=linux_disk_space metric_name=”% Free Space” OR metric_name=”disk.free.percent”  
+| stats latest(Value) as latest_disk_free_percent by host, instance // instance is drive letter or mount point  
+| where latest_disk_free_percent < 10 // Less than 10% free space  
+| sort host, latest_disk_free_percent
+
+##### Anomalous Outbound Network Activity (Spike in Connections or Data Volume – Sysmon/Auditd/Netflow)
+
+Index=Your_Sysmon_Index EventCode=3 Direction=”outbound” NOT (DestinationIp=”127.0.0.1” OR DestinationIp=”::1”)  
+| timechart span=1h dc(DestinationPort) as distinct_outbound_ports by host  
+| anomalydetection distinct_outbound_ports by host action=annotate
