@@ -562,6 +562,47 @@ Index=Your_Auditd_Index sourcetype=linux_audit type=SYSCALL key=”monitored_com
 
 ### OS
 
+#### Windows
+
+##### Critical OS Errors (Last 24 Hours)
+
+Index=Your_Windows_Index sourcetype=”WinEventLog:System” (EventLevelName=”Error” OR EventLevelName=”Critical”)  
+| stats count by _time, host, SourceName, EventCode, Message  
+| sort -_time  
+| head 20
+
+##### New Services Installed
+
+Index=Your_Windows_Index sourcetype=”WinEventLog:System” EventCode=7045 OR index=Your_Windows_Index sourcetype=”WinEventLog:Security” EventCode=4697  
+| eval ServiceName=coalesce(param1, ServiceName), ServiceFileName=coalesce(param2, ServiceFileName), ServiceType=coalesce(param3,ServiceType), StartType=coalesce(param4,StartType), AccountName=coalesce(param5,AccountName)  
+| table _time, host, ServiceName, ServiceFileName, StartType, AccountName, Message  
+| sort -_time
+
+##### Scheduled Tasks Created/Modified
+
+Index=Your_Windows_Index sourcetype=”WinEventLog:Microsoft-Windows-TaskScheduler/Operational” (EventCode=106 OR EventCode=140 OR EventCode=141 OR EventCode=200)  
+| eval Action=case(EventCode=106, “Created”, EventCode=140, “Updated”, EventCode=141, “Deleted”, EventCode=200, “Executed”)  
+| rex field=Message “Task Scheduler registered task \”(?<TaskPath>[^\”]+)\””  
+| rex field=Message “Task Scheduler updated task \”(?<TaskPath>[^\”]+)\””  
+| rex field=Message “Task Scheduler deleted task \”(?<TaskPath>[^\”]+)\””  
+| rex field=Message “Task Scheduler launched action \”(?<TaskAction>[^\”]+)\” in Task \”(?<TaskPath>[^\”]+)\””  
+| table _time, host, Action, TaskPath, TaskAction, UserID, Message  
+| sort -_time
+
+##### System Time Changes
+
+Index=Your_Windows_Index sourcetype=”WinEventLog:Security” EventCode=4616  
+| eval PreviousTime=mvindex(Message, 1), NewTime=mvindex(Message,2) // Adjust based on actual message format or use fields if extracted  
+| rex field=Message “Previous Time:\s+(?<PreviousTime>[^L]+UTC)”  
+| rex field=Message “New Time:\s+(?<NewTime>[^L]+UTC)”  
+| rex field=Message “Process Name:\s+(?<ProcessName>[^\r\n]+)”  
+| table _time, host, SubjectUserName, ProcessName, PreviousTime, NewTime  
+| sort -_time
+
+#### Linux
+
+
+
 ### File Integrity Monitoring
 
 ### HIDS Alerts
